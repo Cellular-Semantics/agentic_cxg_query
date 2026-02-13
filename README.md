@@ -25,6 +25,8 @@ Then open the project in your AI coding agent and start querying:
 5. **gene_resolver** maps gene names to Ensembl IDs (with disambiguation)
 6. **cellxgene-census** retrieves the matching single-cell data
 
+All queries automatically filter to `is_primary_data == True` to avoid duplicate cells across overlapping datasets.
+
 ## Platform Support
 
 | Platform | Status | Config |
@@ -32,6 +34,16 @@ Then open the project in your AI coding agent and start querying:
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Full support | `CLAUDE.md`, `.claude/skills/`, `.claude/agents/` |
 | [OpenAI Codex](https://openai.com/index/codex/) | Full support | `AGENTS.md`, `.codex/agents/`, `.codex/config.toml` |
 | [GitHub Copilot](https://github.com/features/copilot) | Context only | `.github/copilot-instructions.md` |
+
+## Features
+
+- **Three API modes**: metadata exploration (`get_obs`), expression retrieval (`get_anndata`), and feature selection (`get_highly_variable_genes`)
+- **Ontology expansion**: "T cell" automatically includes CD4+, CD8+, regulatory T cells, etc.
+- **Gene resolution**: gene symbols resolved to Ensembl IDs with automatic disambiguation of ambiguous names
+- **De-duplication**: filters to primary data by default, avoiding duplicate cells across overlapping datasets
+- **Size estimation**: pre-flight cell count and download size estimate before large `get_anndata()` queries
+- **Auto-save**: direct execution results saved to `outputs/` with descriptive filenames (`.h5ad` or `.parquet`)
+- **Code or execute**: generates reviewable code by default, or runs directly on request
 
 ## Examples
 
@@ -47,6 +59,9 @@ Then open the project in your AI coding agent and start querying:
 
 # Complex multi-condition query
 /cxg-query medium spiny neurons from adult human brain
+
+# Direct execution
+/cxg-query run it: female macrophages in kidney with diabetes
 ```
 
 ## Direct Python Usage
@@ -83,18 +98,20 @@ print(f"{adata.shape[0]:,} cells x {adata.shape[1]:,} genes")
 
 ```
 agentic-cxg-query/
-├── .claude/                    # Claude Code config
+├── .claude/                    # Claude Code config (master for shared files)
 │   ├── agents/ontology-term-lookup.md
 │   └── skills/cxg-query/SKILL.md
-├── .codex/                     # OpenAI Codex config
+├── .codex/                     # OpenAI Codex config (synced by setup.sh)
 │   ├── agents/ontology-term-lookup.md
 │   └── config.toml
 ├── .github/copilot-instructions.md
 ├── .mcp.json                   # OLS4 MCP server
 ├── src/gene_resolver.py        # Gene name → Ensembl ID resolution
 ├── tests/test_gene_resolver.py
+├── planning/ROADMAP.md         # Feature roadmap
+├── outputs/                    # Query results (git-ignored)
 ├── example_query.py            # Usage examples
-├── setup.sh                    # One-command setup
+├── setup.sh                    # One-command setup (also syncs agent configs)
 ├── Makefile                    # setup, test, check-mcp, clean
 └── pyproject.toml
 ```

@@ -78,6 +78,20 @@ else
     warn "curl not found, skipping OLS4 connectivity check"
 fi
 
+# ---- Sync shared config (.claude → .codex) -----------------------------------
+
+info "Syncing shared agent configs from .claude to .codex..."
+mkdir -p .codex/agents
+for src in .claude/agents/*.md; do
+    [ -f "$src" ] || continue
+    dest=".codex/agents/$(basename "$src")"
+    if [ -f "$dest" ] && diff -q "$src" "$dest" &>/dev/null; then
+        continue
+    fi
+    cp "$src" "$dest"
+    ok "  Synced $(basename "$src")"
+done
+
 # ---- Done --------------------------------------------------------------------
 
 echo ""
