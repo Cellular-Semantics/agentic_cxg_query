@@ -10,8 +10,13 @@ cd agentic-cxg-query
 ./setup.sh          # creates .venv, installs deps, verifies OLS4
 ```
 
-Then open the project in your AI coding agent and start querying:
+Then open the project in your AI coding agent and ask for what you need:
 
+```
+Get me female T cells in lung tissue
+```
+
+In Claude Code you can also use the `/cxg-query` skill shorthand:
 ```
 /cxg-query female T cells in lung tissue
 ```
@@ -47,22 +52,23 @@ All queries automatically filter to `is_primary_data == True` to avoid duplicate
 
 ## Examples
 
-```bash
-# Metadata exploration (get_obs)
-/cxg-query just metadata for T cells in skin
+Just describe what you want — the agent handles ontology lookups, term expansion, and code generation:
 
-# Expression data with gene filtering (get_anndata)
-/cxg-query expression of TP53 and BRCA1 in lung fibroblasts
+| You say | What happens |
+|---|---|
+| "female T cells in lung tissue" | Looks up T cell (CL) + lung (UBERON), expands to ~76 cell types and ~15 tissue terms |
+| "expression of TP53 and BRCA1 in lung fibroblasts" | Resolves gene names to Ensembl IDs, builds both obs and var filters |
+| "how many macrophages are in kidney?" | "how many" triggers metadata-only `get_obs()` mode — fast, no expression matrix |
+| "highly variable genes in pancreatic beta cells" | "highly variable" triggers `get_highly_variable_genes()` mode |
+| "run it: adult neurons from brain with Alzheimer's" | "run it" triggers direct execution with pre-flight size estimate and auto-save |
 
-# Highly variable genes (get_highly_variable_genes)
-/cxg-query highly variable genes in pancreatic beta cells
+### Worked examples
 
-# Complex multi-condition query
-/cxg-query medium spiny neurons from adult human brain
+Step-by-step walkthroughs of the full agentic flow:
 
-# Direct execution
-/cxg-query run it: female macrophages in kidney with diabetes
-```
+- **[T cells in lung](examples/01_t_cells_in_lung.md)** — basic query, ontology expansion, generated code
+- **[Gene expression in fibroblasts](examples/02_gene_expression_in_fibroblasts.md)** — gene resolution, var filtering, ambiguity handling
+- **[Disease + development stage](examples/03_disease_and_development_stage.md)** — multi-ontology, dev stage strategies, informal age terms
 
 ## Direct Python Usage
 
@@ -108,6 +114,7 @@ agentic-cxg-query/
 ├── .mcp.json                   # OLS4 MCP server
 ├── src/gene_resolver.py        # Gene name → Ensembl ID resolution
 ├── tests/test_gene_resolver.py
+├── examples/                   # Worked examples (agentic session walkthroughs)
 ├── planning/ROADMAP.md         # Feature roadmap
 ├── outputs/                    # Query results (git-ignored)
 ├── example_query.py            # Usage examples

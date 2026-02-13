@@ -23,6 +23,19 @@ Generate CELLxGENE census queries from natural language descriptions. This skill
 
 ---
 
+## Critical Rule: Always Look Up Terms — Never Guess Labels
+
+**You MUST use the OLS4 MCP (via the ontology-term-lookup agent) to resolve every biological entity to its exact ontology label before constructing any filter.** Never guess or assume what a label might be.
+
+`enhance()` matches on **exact `rdfs:label`** values. A wrong label (even a close one) will silently fail to expand — you'll get zero subtypes with no error. For example:
+- `"adult"` — **wrong**, not an rdfs:label in HsapDv → no expansion
+- `"human adult stage"` — **wrong**, not an rdfs:label → no expansion
+- `"adult stage"` — **correct** (HsapDv:0000258) → expands to 103 terms
+
+This applies to **all** categories (cell type, tissue, disease, development stage), not just dev stages. Always look up first, then use the exact label returned by OLS4.
+
+---
+
 ## Instructions
 
 You are helping to construct a CELLxGENE census query from natural language input. Follow these steps in order.
@@ -44,19 +57,22 @@ Extract the following from the user's request:
   - "highly variable", "HVG", "variable genes" → `get_highly_variable_genes()` mode
   - If unclear, default to `get_anndata()`
 
-### Step 2: Find ontology terms
+### Step 2: Find ontology terms (MANDATORY — never skip)
 
-For each biological entity identified (cell type, tissue, disease, development stage), use the ontology-term-lookup agent to find the appropriate ontology term:
+**You MUST look up every biological entity via OLS4 before building any filter.** Use the ontology-term-lookup agent for each term:
 
 - **Cell types**: Search in Cell Ontology (CL)
 - **Tissues**: Search in Uberon (UBERON)
 - **Diseases**: Search in MONDO
 - **Development stages**: Search in HsapDv (human) or MmusDv (mouse)
 
-**IMPORTANT**: When searching for terms, try multiple phrasings if the first search doesn't yield good results. For example:
+Use the **exact label** returned by OLS4 in your filter. Do not paraphrase, abbreviate, or add prefixes like "human". The label from OLS4 is what `enhance()` will match against in Ubergraph.
+
+If the first search doesn't yield good results, try multiple phrasings:
 - "T cell" vs "T lymphocyte"
 - "lung" vs "pulmonary"
 - "kidney" vs "renal"
+- "adult" → search HsapDv, use the exact label returned (e.g. `"adult stage"`)
 
 Use the Task tool with subagent_type=ontology-term-lookup for each term lookup.
 
@@ -84,7 +100,14 @@ var_filter = build_var_value_filter(all_ids)
 
 Build a Python expression string using these rules:
 
+**De-duplication (always applied)**: Always include `is_primary_data == True` in the filter to avoid counting cells that appear in multiple overlapping datasets. **You MUST inform the user** that this filter is being applied, e.g.:
+
+> Note: Filtering to `is_primary_data == True` to exclude duplicate cells across overlapping datasets.
+
+If the user explicitly requests all data including duplicates, omit this filter and note that results may contain duplicate cells.
+
 **Valid column names** (CELLxGENE census schema):
+- `is_primary_data`: `True` or `False` (always default to `True`)
 - `sex`: `'male'` or `'female'` (lowercase)
 - `cell_type`: ontology label (e.g., `'T cell'`)
 - `cell_type_ontology_term_id`: ontology ID (e.g., `'CL:0000084'`)
@@ -112,9 +135,10 @@ Ask the user (or infer from context when obvious):
    | "HVG", "highly variable", "variable genes" | `get_highly_variable_genes()` | Feature selection |
 
 2. **Execution mode** — generate code vs execute directly:
-   - If the user says "run it", "execute", "fetch" → execute directly
+   - If the user says "run it", "execute", "fetch" → execute directly (with pre-flight size estimate for `get_anndata()`)
    - If the user says "show code", "generate" → generate code only
-   - If ambiguous, ask
+   - If ambiguous, default to generating code
+   - When executing directly, always auto-save results to `outputs/` directory
 
 **Size warning**: For broad `get_anndata()` queries (no gene filter, broad cell type), warn the user that this may download a very large dataset. Suggest running `get_obs()` first to estimate cell count.
 
@@ -131,7 +155,7 @@ import cellxgene_census
 from cxg_query_enhancer import enhance
 
 obs_filter = enhance(
-    "[obs_value_filter]",
+    "is_primary_data == True and [obs_value_filter]",
     organism="[homo_sapiens or mus_musculus]"
 )
 
@@ -161,7 +185,7 @@ import cellxgene_census
 from cxg_query_enhancer import enhance
 
 obs_filter = enhance(
-    "[obs_value_filter]",
+    "is_primary_data == True and [obs_value_filter]",
     organism="[homo_sapiens or mus_musculus]"
 )
 
@@ -192,7 +216,7 @@ import cellxgene_census
 from cxg_query_enhancer import enhance
 
 obs_filter = enhance(
-    "[obs_value_filter]",
+    "is_primary_data == True and [obs_value_filter]",
     organism="[homo_sapiens or mus_musculus]"
 )
 
@@ -214,9 +238,57 @@ print(hvg_df.head(20))
 
 When the user wants you to run the query directly:
 
-1. Execute the code using the Bash tool with Python
-2. Show the shape and `.head()` preview
-3. Offer to save results to `outputs/` directory
+1. **Pre-flight size estimate** (for `get_anndata()` only): Before fetching expression data, always run a quick `get_obs()` count first to estimate download size. Use this pattern:
+
+```python
+import cellxgene_census
+from cxg_query_enhancer import enhance
+
+obs_filter = enhance("is_primary_data == True and [obs_value_filter]", organism="[homo_sapiens or mus_musculus]")
+
+with cellxgene_census.open_soma(census_version="latest") as census:
+    obs_df = cellxgene_census.get_obs(
+        census,
+        organism="[Homo sapiens or Mus musculus]",
+        value_filter=obs_filter,
+        column_names=["cell_type"]
+    )
+
+n_cells = len(obs_df)
+n_genes_total = 60664  # approx total genes in census (human)
+n_genes_filtered = [number of genes in var_value_filter, or n_genes_total if none]
+
+est_mb = (n_cells * n_genes_filtered * 4) / (1024 ** 2)  # dense upper bound
+# sparse data is typically 10-30% of dense; use 0.2 as multiplier
+est_sparse_mb = est_mb * 0.2
+
+print(f"Estimated: {n_cells:,} cells x {n_genes_filtered:,} genes")
+print(f"Estimated download size: ~{est_sparse_mb:,.0f} MB (sparse), up to ~{est_mb:,.0f} MB (dense)")
+```
+
+Report the estimate to the user. If estimated sparse size > 500 MB, warn them and ask for confirmation before proceeding. If > 5 GB, strongly recommend adding gene filters or narrowing the query.
+
+2. Execute the full query using the Bash tool with Python
+3. Show the shape and `.head()` preview
+4. **Auto-save results** to `outputs/` with a descriptive filename:
+
+```python
+import os
+from datetime import datetime
+
+os.makedirs("outputs", exist_ok=True)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+# Build a short slug from the query filters (e.g. "female_Tcell_lung")
+filename = f"outputs/{slug}_{timestamp}.h5ad"  # .h5ad for anndata, .parquet for obs/hvg
+adata.write_h5ad(filename)  # or obs_df.to_parquet(filename) for get_obs/HVG
+print(f"Saved to {filename}")
+```
+
+Filename conventions:
+- `get_anndata()` results → `.h5ad` format
+- `get_obs()` results → `.parquet` format
+- `get_highly_variable_genes()` results → `.parquet` format
+- Slug should be a short, readable summary of the key filters (e.g. `female_Tcell_lung`, `TP53_BRCA1_fibroblast`), max ~40 chars
 
 ---
 
