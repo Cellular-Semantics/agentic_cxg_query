@@ -78,6 +78,15 @@ else
     warn "curl not found, skipping OLS4 connectivity check"
 fi
 
+# ---- Refresh obsolete-stage lookups -----------------------------------------
+
+info "Refreshing obsolete developmental-stage lookups from Ubergraph..."
+if ./data/refresh_obsolete_stages.sh; then
+    ok "Obsolete-stage lookups refreshed"
+else
+    warn "Could not refresh obsolete-stage lookups (network issue?). Using cached files."
+fi
+
 # ---- Sync shared config (.claude → .codex) -----------------------------------
 
 info "Syncing shared configs from .claude to .codex..."

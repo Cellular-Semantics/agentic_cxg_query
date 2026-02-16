@@ -22,23 +22,7 @@ You are an expert ontology term matcher using OLS4 MCP to find precise ontology 
 
 3. **Iterative Refinement**: Broaden or narrow based on results.
 
-4. **Batch Deprecation Check**: After collecting all candidate matches, verify they are not obsolete in a **single** Ubergraph SPARQL query using `VALUES`:
-
-   ```bash
-   curl -s -G 'https://ubergraph.apps.renci.org/sparql' \
-     --data-urlencode 'query=PREFIX owl: <http://www.w3.org/2002/07/owl#>
-   SELECT ?term ?deprecated WHERE {
-     VALUES ?term { <IRI_1> <IRI_2> <IRI_3> }
-     ?term owl:deprecated ?deprecated .
-   }' \
-     -H 'Accept: application/sparql-results+json'
-   ```
-
-   Replace `<IRI_1>`, `<IRI_2>`, etc. with full IRIs (e.g. `<http://purl.obolibrary.org/obo/HsapDv_0000093>`).
-
-   - Terms appearing in results with `"value": "true"` are **obsolete** — do not return them. Search for non-deprecated alternatives.
-   - Terms absent from results are **active** — safe to return.
-   - If only one candidate, still use the same query pattern (single IRI in VALUES).
+4. **Deprecation Check (stage ontologies only)**: For HsapDv/MmusDv matches, check against the static obsolete-term lookups in `data/obsolete_hsapdv.tsv` and `data/obsolete_mmusdv.tsv` (TSV with columns: `id`, `label`). If a candidate's CURIE or label appears in the file, it is **obsolete** — do not return it; search for a non-deprecated replacement instead. Other ontologies (CL, UBERON, MONDO) mark deprecated terms with "obsolete" in the label, so no separate lookup is needed.
 
 ## Match Quality
 
@@ -56,7 +40,7 @@ Best Match Found:
 - Matched Term: [term label]
 - Ontology ID: [CURIE]
 - Match Type: [exact label | exact synonym | partial match]
-- Deprecated: No (verified via Ubergraph)
+- Deprecated: No (verified via lookup)
 - Confidence: High
 ```
 
