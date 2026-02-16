@@ -1,6 +1,6 @@
 # Example: Female T cells in lung tissue
 
-A walkthrough of the full agentic query flow — from natural language to downloaded data.
+A walkthrough of the full agentic query flow — from natural language to generated code.
 
 ## The prompt
 
@@ -34,23 +34,28 @@ Intent: no special keywords → defaults to `get_anndata()`.
 
 ## Step 2: Ontology lookup (OLS4 MCP)
 
-The agent queries OLS4 to confirm the terms exist and get their IDs:
+The agent queries OLS4 in parallel to confirm the terms exist and get their IDs:
 
 **T cell** → Cell Ontology
 ```
 Best Match Found:
+- Input Text: T cell
 - Matched Term: T cell
 - Ontology ID: CL:0000084
-- Match Type: exact label
+- Match Type: Exact label match
+- Definition: A type of lymphocyte whose defining characteristic is the expression
+  of a T cell receptor complex.
 - Confidence: High
 ```
 
 **lung** → Uberon
 ```
 Best Match Found:
+- Input Text: lung
 - Matched Term: lung
 - Ontology ID: UBERON:0002048
-- Match Type: exact label
+- Match Type: Exact label match
+- Definition: Respiration organ that develops as an outpocketing of the esophagus.
 - Confidence: High
 ```
 
@@ -63,13 +68,14 @@ These are straightforward lookups. For harder cases (e.g. "MSN" could mean mediu
 The agent builds:
 
 ```python
-"is_primary_data == True and sex == 'female' and cell_type in ['T cell'] and tissue in ['lung']"
+'is_primary_data == True and sex == "female" and cell_type in ["T cell"] and tissue in ["lung"]'
 ```
 
 Key decisions:
 - `is_primary_data == True` added automatically (de-duplication)
 - Labels used, not IDs — `enhance()` will expand them
 - `in [...]` syntax even for single values — consistent pattern
+- Double quotes for string literals (handles labels with apostrophes)
 
 ---
 
@@ -79,26 +85,50 @@ Key decisions:
 
 **Stage A — Ontology closure (Ubergraph SPARQL)**: For each label, query Ubergraph for all subclasses and `part_of` descendants. This is a pure ontology operation — it returns every term in the hierarchy below your input.
 
-**Stage B — Census filtering**: The raw ontology expansion is then intersected with terms that actually appear in the CELLxGENE Census dataset. This removes terms that are ontologically valid but have no cells annotated with them in Census. For example, Uberon might define dozens of lung sub-structures, but only those that curators have actually used to annotate cells will appear in the final filter.
+**Stage B — Census filtering**: The raw ontology expansion is then intersected with terms that actually appear in the CELLxGENE Census dataset. This removes terms that are ontologically valid but have no cells annotated with them in Census.
 
-**T cell** (CL:0000084):
-- Ubergraph returns ~150+ CL descendants (every T cell subtype in the ontology)
-- Census filtering narrows to ~76 terms (only those with annotated cells)
+**T cell** (CL:0000084) → 31 census-matched cell types:
 > T cell, CD4-positive alpha-beta T cell, CD8-positive alpha-beta T cell,
-> regulatory T cell, gamma-delta T cell, natural killer T cell,
-> mucosal associated invariant T cell, ...
+> regulatory T cell, effector memory CD4-positive alpha-beta T cell,
+> CD8-positive alpha-beta cytotoxic T cell, central memory CD4-positive alpha-beta T cell,
+> effector memory CD8-positive alpha-beta T cell, helper T cell, ...
 
-**lung** (UBERON:0002048):
-- Ubergraph returns many Uberon parts and substructures
-- Census filtering narrows to ~15 terms
-> lung, left lung, right lung, lung epithelium, bronchus,
-> upper lobe of left lung, lower lobe of right lung, ...
+**lung** (UBERON:0002048) → 13 census-matched tissue terms:
+> lung, lung parenchyma, epithelial lining fluid, alveolus of lung,
+> lower lobe of left lung, upper lobe of left lung, upper lobe of right lung,
+> right lung, lower lobe of right lung, middle lobe of right lung,
+> left lung, segmental bronchus, lingula of left lung
 
 The enhanced filter is much longer but captures the full biological scope — and every term in it is guaranteed to match cells in Census.
 
 ---
 
-## Step 5: Generated code
+## Step 5: Pre-flight cell count
+
+The agent runs a mandatory `get_obs()` count before presenting the final query:
+
+```
+Found 301,450 cells
+
+cell_type (31 unique):
+  CD4-positive, alpha-beta T cell     96,504
+  T cell                              69,785
+  CD8-positive, alpha-beta T cell     68,109
+  regulatory T cell                   13,933
+  effector memory CD4+ T cell          8,653
+  ... (26 more subtypes)
+
+tissue (13 unique):
+  lung                               220,517
+  lung parenchyma                     20,897
+  epithelial lining fluid             14,004
+  alveolus of lung                    11,570
+  ... (9 more structures)
+```
+
+---
+
+## Step 6: Generated code
 
 The agent presents:
 
@@ -107,7 +137,7 @@ import cellxgene_census
 from cxg_query_enhancer import enhance
 
 obs_filter = enhance(
-    "is_primary_data == True and sex == 'female' and cell_type in ['T cell'] and tissue in ['lung']",
+    'is_primary_data == True and sex == "female" and cell_type in ["T cell"] and tissue in ["lung"]',
     organism="homo_sapiens"
 )
 
@@ -128,29 +158,31 @@ print(adata.obs.head())
 
 **Summary provided by agent:**
 > Resolved terms:
-> - Cell type: T cell (CL:0000084)
-> - Tissue: lung (UBERON:0002048)
+> - Cell type: T cell (CL:0000084) — expands to 31 subtypes
+> - Tissue: lung (UBERON:0002048) — expands to 13 structures
+>
+> Pre-flight count: 301,450 cells
 >
 > Note: Filtering to `is_primary_data == True` to exclude duplicate cells across overlapping datasets.
 >
-> Without `enhance()`: ~71,000 cells (exact label match only)
-> With `enhance()`: ~700,000 cells (includes all T cell subtypes in all lung structures)
+> Warning: This is a broad query (all genes). Estimated download: ~301K cells x ~60K genes.
+> Consider adding gene filters to reduce download size, or use `get_obs()` for metadata only.
 
 ---
 
-## Step 6: Direct execution (optional)
+## Step 7: Direct execution (optional)
 
 If you said "run it" or "execute", the agent would:
 
-1. **Pre-flight estimate** — run a quick `get_obs()` count:
+1. **Pre-flight estimate** — already done above:
    ```
-   Estimated: 712,345 cells x 60,664 genes
-   Estimated download size: ~3,200 MB (sparse), up to ~16,000 MB (dense)
+   Estimated: 301,450 cells x 60,664 genes
+   Estimated download size: ~14,000 MB (sparse)
    ```
 2. **Warn** — this is a large query (>500 MB sparse), suggest adding gene filters
 3. **Proceed on confirmation** — fetch and auto-save:
    ```
-   Saved to outputs/female_Tcell_lung_20250213_143022.h5ad
+   Saved to outputs/female_Tcell_lung_20260216_143022.h5ad
    ```
 
 ---

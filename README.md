@@ -21,16 +21,28 @@ In Claude Code you can also use the `/cxg-query` skill shorthand:
 /cxg-query female T cells in lung tissue
 ```
 
-## How It Works
+## Examples
 
-1. **You describe** the data you want in plain English
-2. **The agent** parses your request into biological entities (cell types, tissues, diseases, genes, assays, stages)
-3. **OLS4 MCP** resolves entities to ontology terms (CL, Uberon, MONDO, HsapDv/MmusDv)
-4. **cxg-query-enhancer** expands terms to include all subtypes via Ubergraph, filtered to those present in Census
-5. **gene_resolver** maps gene names to Ensembl IDs (with disambiguation for ambiguous names)
-6. **cellxgene-census** retrieves the matching single-cell data
+Just describe what you want — the agent handles ontology lookups, term expansion, and code generation:
 
-All queries automatically filter to `is_primary_data == True` to avoid duplicate cells across overlapping datasets.
+| You say | What happens |
+|---|---|
+| "female T cells in lung tissue" | Expands to 31 T cell subtypes across 13 lung structures → 301K cells |
+| "expression of TP53 and BRCA1 in lung fibroblasts" | Resolves genes to Ensembl IDs, expands to 10 fibroblast subtypes → 199K cells x 2 genes |
+| "how many macrophages are in kidney?" | "how many" triggers fast metadata-only mode (no expression matrix) |
+| "highly variable genes in pancreatic beta cells" | "highly variable" triggers `get_highly_variable_genes()` mode |
+| "run it: adult neurons from brain with Alzheimer's" | "run it" triggers direct execution with size estimate and auto-save |
+| "snRNA-seq data from human heart" | Maps to `suspension_type == "nucleus"`, expands heart tissue terms |
+| "10x 5' data from pediatric kidney" | Maps to all 10x 5' assay variants, enumerates child-age stages |
+
+### Worked examples
+
+Step-by-step walkthroughs showing the full agentic flow with real OLS4 lookups and Census cell counts:
+
+- **[T cells in lung](examples/01_t_cells_in_lung.md)** — basic query, ontology expansion, pre-flight validation
+- **[Gene expression in fibroblasts](examples/02_gene_expression_in_fibroblasts.md)** — gene resolution, var filtering, ambiguity handling
+- **[Disease + development stage](examples/03_disease_and_development_stage.md)** — zero-results fallback loop, deprecated term detection
+- **[snRNA-seq 10x pediatric kidney HVG](examples/04_snrnaseq_pediatric_kidney_hvg.md)** — assay filtering, suspension type, informal age terms, data availability
 
 ## Platform Support
 
@@ -42,75 +54,50 @@ All queries automatically filter to `is_primary_data == True` to avoid duplicate
 
 Configs are synced automatically: `setup.sh` copies Claude Code skills and agents to `.codex/` and mirrors `CLAUDE.md` to `AGENTS.md`.
 
+## How It Works
+
+1. **You describe** the data you want in plain English
+2. **The agent** parses your request into biological entities (cell types, tissues, diseases, genes, assays, stages)
+3. **OLS4 MCP** resolves entities to ontology terms (CL, Uberon, MONDO, HsapDv/MmusDv)
+4. **cxg-query-enhancer** expands terms to include all subtypes via Ubergraph, filtered to those present in Census
+5. **gene_resolver** maps gene names to Ensembl IDs (with disambiguation for ambiguous names)
+6. **cellxgene-census** retrieves the matching single-cell data
+
+All queries automatically filter to `is_primary_data == True` to avoid duplicate cells across overlapping datasets.
+
 ## Features
 
 - **Three API modes**: metadata exploration (`get_obs`), expression retrieval (`get_anndata`), and feature selection (`get_highly_variable_genes`) — automatically selected from intent keywords
-- **Ontology expansion**: "T cell" automatically includes CD4+, CD8+, regulatory T cells, etc. (~76 subtypes); "lung" includes left lung, bronchus, lung epithelium, etc. (~15 structures)
+- **Ontology expansion**: "T cell" automatically includes CD4+, CD8+, regulatory T cells, etc. (~31 subtypes); "lung" includes left lung, bronchus, lung epithelium, etc. (~13 structures)
 - **Gene resolution**: gene symbols resolved to Ensembl IDs with automatic disambiguation (prefers protein_coding when ambiguous)
 - **Assay filtering**: informal terms like "10x", "Smart-seq", "droplet-based" mapped to exact census labels from a cached lookup (~37 assays)
 - **Suspension & tissue type**: filter by `suspension_type` (cell/nucleus) and `tissue_type` (tissue/organoid/cell culture)
-- **Development stage handling**: exact ontology labels enforced (e.g. `"adult stage"` not `"adult"`), species-specific routing (HsapDv vs MmusDv), deprecated term detection via static lookup
+- **Development stage handling**: exact ontology labels enforced, species-specific routing (HsapDv vs MmusDv), deprecated term detection, informal age terms enumerated
 - **Pre-flight validation**: mandatory cell count before presenting results; zero-results trigger automatic relaxation loop
 - **Size estimation**: download size estimate before large `get_anndata()` queries, with warnings for >500 MB
-- **De-duplication**: filters to primary data by default, avoiding duplicate cells across overlapping datasets
-- **Auto-save**: direct execution results saved to `outputs/` with descriptive filenames (`.h5ad` or `.parquet`)
-- **Code or execute**: generates reviewable code by default, or runs directly on request
-- **Formal grammar**: filter expressions follow a documented EBNF grammar with double-quote convention (handles labels containing apostrophes like `10x 3' v3`)
-
-## Examples
-
-Just describe what you want — the agent handles ontology lookups, term expansion, and code generation:
-
-| You say | What happens |
-|---|---|
-| "female T cells in lung tissue" | Looks up T cell (CL) + lung (UBERON), expands to ~76 cell types and ~15 tissue terms |
-| "expression of TP53 and BRCA1 in lung fibroblasts" | Resolves gene names to Ensembl IDs, builds both obs and var filters |
-| "how many macrophages are in kidney?" | "how many" triggers metadata-only `get_obs()` mode — fast, no expression matrix |
-| "highly variable genes in pancreatic beta cells" | "highly variable" triggers `get_highly_variable_genes()` mode |
-| "run it: adult neurons from brain with Alzheimer's" | "run it" triggers direct execution with pre-flight size estimate and auto-save |
-| "snRNA-seq data from human heart" | Maps to `suspension_type == "nucleus"`, expands heart tissue terms |
-| "10x 5' data from pediatric kidney" | Maps to all `10x 5'` assay variants, enumerates child-age HsapDv stages |
-
-### Worked examples
-
-Step-by-step walkthroughs of the full agentic flow:
-
-- **[T cells in lung](examples/01_t_cells_in_lung.md)** — basic query, ontology expansion, generated code
-- **[Gene expression in fibroblasts](examples/02_gene_expression_in_fibroblasts.md)** — gene resolution, var filtering, ambiguity handling
-- **[Disease + development stage](examples/03_disease_and_development_stage.md)** — multi-ontology, dev stage strategies, informal age terms
-
+- **Code or execute**: generates reviewable code by default, or runs directly on request with auto-save to `outputs/`
 
 ## Project Structure
 
 ```
 ask-census/
 ├── .claude/                    # Claude Code config (master for shared files)
-│   ├── agents/ontology-term-lookup.md  # Ontology lookup agent (OLS4 MCP)
+│   ├── agents/ontology-term-lookup.md
 │   └── skills/cxg-query/
-│       ├── SKILL.md            # Main skill definition
-│       └── references/
-│           ├── grammar.md      # EBNF filter grammar + column reference
-│           ├── templates.md    # Code templates for all 3 API modes
-│           └── census_fields.json  # Cached assay/suspension/tissue lookups
+│       ├── SKILL.md
+│       └── references/         # grammar, templates, census field lookups
 ├── .codex/                     # OpenAI Codex config (synced by setup.sh)
-│   ├── agents/
-│   ├── skills/
-│   └── config.toml             # Codex MCP server config
-├── .github/copilot-instructions.md  # GitHub Copilot context
-├── .mcp.json                   # OLS4 MCP server (Claude Code + Codex)
+├── .github/copilot-instructions.md
+├── .mcp.json                   # OLS4 MCP server
 ├── src/
 │   ├── gene_resolver.py        # Gene name → Ensembl ID resolution
-│   └── refresh_census_fields.py  # Regenerate census_fields.json from live census
-├── data/
-│   ├── obsolete_hsapdv.tsv     # Static obsolete HsapDv terms (from Ubergraph)
-│   ├── obsolete_mmusdv.tsv     # Static obsolete MmusDv terms
-│   └── refresh_obsolete_stages.sh  # Regenerate obsolete term lookups
-├── tests/test_gene_resolver.py
-├── examples/                   # Worked examples (agentic session walkthroughs)
-├── planning/                   # Roadmap and implementation plans
+│   └── refresh_census_fields.py
+├── data/                       # Obsolete stage term lookups
+├── tests/
+├── examples/                   # Worked examples
+├── planning/                   # Roadmap
 ├── outputs/                    # Query results (git-ignored)
-├── example_query.py            # Usage examples
-├── setup.sh                    # One-command setup (also syncs agent configs)
+├── setup.sh                    # One-command setup
 ├── Makefile                    # setup, test, check-mcp, clean
 └── pyproject.toml
 ```
