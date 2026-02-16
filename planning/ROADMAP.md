@@ -3,22 +3,90 @@
 ## User story
 
 As a biologist/bioinformatician I want to pull relevant data from CELLxGENE census, based on some combination of cell type, tissue, disease and stage
-in order to carry out my analysis. 
+in order to carry out my analysis.
 I want to specify what counts as relevant data in free text and have an agent generate code for me to query CELLxGENE or pull data directly for me.
 I have limited prior knowledge of what data is in the Census and how it is annotated, so I want an agent to generate suitable filters with relevant ontology terms and to explore whether the resulting filters return sufficient numbers of cells in order to be useful for me.  If the filter returns no cells, I would like the agent to automatically explore relaxing those filters to find ones that do return cells. Examples could include choosing a broader age/stage filter, a more general tissue, cell type or disease term, or dropping one of the criteria.  This should be an initial exploration rather than an exhustive one.
 
 I would like the agentic session to run quickly and efficiently.
 
-## Multi-framework support
+---
 
-- Setup script should sync skills from claude
-- Add support for copilot 
-	- .vscode config
-	- What else?
+## Implemented
 
-## Testing framework:
+### Core query generation (skill + agent)
 
- - Pass free text query to a set of subagents (3-5?) and assess how well results (accross replicates) suport the use case.
+- `/cxg-query` skill parses natural language into biological entities and constructs filter expressions
+- `ontology-term-lookup` agent resolves terms via OLS4 MCP (CL, UBERON, MONDO, HsapDv, MmusDv) with alternative phrasing, synonym matching, and deprecation checks
+- Three API modes auto-selected by intent: `get_obs()`, `get_anndata()`, `get_highly_variable_genes()`
+- `is_primary_data == True` added automatically for de-duplication
+
+### Ontology expansion
+
+- `enhance()` expands terms via Ubergraph subclass + part_of closure, filtered to census-present terms
+- Handles both label-based and ID-based expansion
+- Formal EBNF grammar for filter expressions with double-quote convention (handles apostrophes in labels like `10x 3' v3`)
+
+### Gene resolution
+
+- `gene_resolver.py`: bidirectional mapping between gene symbols and Ensembl IDs
+- Protein_coding disambiguation for ambiguous gene names
+- Cached on disk (pickle) and in memory (LRU)
+- `build_var_value_filter()` constructs var filter strings
+- Unit tests (`tests/test_gene_resolver.py`)
+
+### Assay, suspension type, and tissue type filtering
+
+- `census_fields.json` cached lookup (~37 assays with cell counts, suspension types, tissue types)
+- `refresh_census_fields.py` regenerates from live census
+- Informal assay term mapping (e.g. "10x" → all `10x *` variants, "droplet-based" → 10x + Drop-seq + inDrop + ...)
+- `suspension_type` (cell/nucleus) and `tissue_type` (tissue/organoid/cell culture) as controlled vocabulary columns
+
+### Development stage handling
+
+- Exact rdfs:label enforcement (agent warns about `"adult"` vs `"adult stage"`)
+- Species-specific routing (HsapDv for human, MmusDv for mouse)
+- Organism confirmation prompt when stage mentioned without species
+- Static obsolete-term lookups (`data/obsolete_hsapdv.tsv`, `data/obsolete_mmusdv.tsv`) refreshed from Ubergraph
+- Informal age terms (e.g. "pediatric", "child") mapped to year-based HsapDv stages
+
+### Pre-flight validation and zero-results fallback
+
+- Mandatory cell count before presenting final query
+- Zero-results trigger automatic relaxation loop (broaden disease → cell type → tissue → stage)
+- Categorical dtype handling (filter zero-count categories from census category columns)
+
+### Size estimation and direct execution
+
+- Download size estimate (sparse/dense) before large `get_anndata()` queries
+- Warnings for >500 MB, strong warnings for >5 GB
+- Auto-save to `outputs/` with descriptive filenames (.h5ad or .parquet)
+
+### Multi-framework support
+
+- **Claude Code**: full skill + agent setup (`.claude/skills/`, `.claude/agents/`, `.mcp.json`)
+- **OpenAI Codex**: full support (`.codex/skills/`, `.codex/agents/`, `.codex/config.toml`)
+- **GitHub Copilot**: context-only via `.github/copilot-instructions.md`
+- `setup.sh` syncs configs from `.claude/` → `.codex/` and `CLAUDE.md` → `AGENTS.md`
+
+### Setup and tooling
+
+- `setup.sh`: one-command setup (venv, deps, import verification, census field refresh, OLS4 check, obsolete stage refresh, config sync)
+- `Makefile`: setup, test, check-mcp, clean
+- Worked examples in `examples/`
+
+---
+
+## In Progress
+
+### Full Copilot support via MCP server
+
+Expose core functionality as an MCP server so VS Code Copilot (agent mode) can use the same tools. See `planning/copilot-mcp-server.md` for implementation plan.
+
+- MCP server (`src/mcp_server.py`) with tools: `enhance_query`, `resolve_genes`, `count_cells`, `get_anndata`
+- `.vscode/mcp.json` for Copilot agent mode
+- Enriched `copilot-instructions.md` with domain knowledge from `SKILL.md`
+
+---
 
 ## Future extensions
 
@@ -27,8 +95,6 @@ These are well-understood features with clear implementation paths.
 ### Support non-model organisms (marmoset, macaque, chimpanzee)
 
 Census includes 3 additional species beyond human/mouse: *Callithrix jacchus* (1.7M cells), *Macaca mulatta* (2.9M cells), and *Pan troglodytes* (158K cells). These use generic UBERON life-stage terms (`prime adult stage`, `juvenile stage`, etc.) rather than species-specific ontologies (HsapDv/MmusDv). Requires updating `cxg_query_enhancer` to handle UBERON-based dev stages and routing to the correct organism collection.
-
-### Support query/filter by assay and suspension type
 
 ### Dataset provenance in query output
 
