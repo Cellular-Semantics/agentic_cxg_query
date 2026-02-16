@@ -24,7 +24,7 @@ Extract from the user's request:
 - **Assay**: e.g. "10x", "Smart-seq", "droplet-based"
 - **Suspension type**: cell, nucleus (snRNA vs scRNA)
 - **Tissue type**: tissue, organoid, cell culture
-- **Organism**: human (default) or mouse
+- **Organism**: human (default) or mouse — **if a development stage or age is mentioned but organism is not, you MUST ask the user to confirm species before proceeding**. Many stage labels are shared between human (HsapDv) and mouse (MmusDv) but mean very different things (e.g. `"6-month-old stage"` = infant in human, mature adult in mouse). Use `AskUserQuestion` to confirm.
 - **Genes**: gene names or Ensembl IDs
 - **API mode** (infer from intent):
   | Clues | Mode |
@@ -38,7 +38,7 @@ Extract from the user's request:
 
 **Mandatory for**: cell_type, tissue, disease, development_stage. Use the `ontology-term-lookup` subagent (`Task` tool, `subagent_type=ontology-term-lookup`). Launch independent lookups **in parallel**.
 
-**Skip lookup for**: `sex` (only `'male'`/`'female'`) and `is_primary_data` — these are fixed values, not ontology terms.
+**Skip lookup for**: `sex` (only `"male"`/`"female"`) and `is_primary_data` — these are fixed values, not ontology terms.
 
 Ontology targets: CL (cell types), UBERON (tissues), MONDO (diseases), HsapDv (human dev stages), MmusDv (mouse dev stages).
 
@@ -73,7 +73,7 @@ For `assay`, read `references/census_fields.json` to find exact census labels. U
 
 For `suspension_type` and `tissue_type`, use fixed values directly — no lookup needed. See `references/grammar.md` for valid values.
 
-Syntax: `==` for single values, `in [...]` for multiple, `and`/`or` to combine, single quotes for strings. Prefer labels over IDs. Use parentheses around `or` groups. See `references/grammar.md` for the full formal grammar, column reference, and anti-patterns.
+Syntax: `==` for single values, `in [...]` for multiple, `and`/`or` to combine, **double quotes for all string literals** (avoids breakage from apostrophes in labels like `10x 3' v3`). Prefer labels over IDs. Use parentheses around `or` groups. See `references/grammar.md` for the full formal grammar, column reference, and anti-patterns.
 
 ### Step 5: Validate cell count (zero-results fallback — MANDATORY)
 
