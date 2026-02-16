@@ -80,7 +80,9 @@ fi
 
 # ---- Sync shared config (.claude → .codex) -----------------------------------
 
-info "Syncing shared agent configs from .claude to .codex..."
+info "Syncing shared configs from .claude to .codex..."
+
+# Agents
 mkdir -p .codex/agents
 for src in .claude/agents/*.md; do
     [ -f "$src" ] || continue
@@ -89,8 +91,29 @@ for src in .claude/agents/*.md; do
         continue
     fi
     cp "$src" "$dest"
-    ok "  Synced $(basename "$src")"
+    ok "  Synced agents/$(basename "$src")"
 done
+
+# Skills (mirror entire skill directories)
+if [ -d .claude/skills ]; then
+    for skill_dir in .claude/skills/*/; do
+        [ -d "$skill_dir" ] || continue
+        skill_name="$(basename "$skill_dir")"
+        dest_dir=".codex/skills/$skill_name"
+        mkdir -p "$dest_dir"
+        # Sync all files recursively
+        rsync -a --delete "$skill_dir" "$dest_dir/"
+        ok "  Synced skills/$skill_name/"
+    done
+fi
+
+# AGENTS.md ← CLAUDE.md
+if [ -f CLAUDE.md ]; then
+    if ! [ -f AGENTS.md ] || ! diff -q CLAUDE.md AGENTS.md &>/dev/null; then
+        cp CLAUDE.md AGENTS.md
+        ok "  Synced AGENTS.md"
+    fi
+fi
 
 # ---- Done --------------------------------------------------------------------
 

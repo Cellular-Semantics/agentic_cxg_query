@@ -12,6 +12,7 @@ wheels/
 # Caches
 .cache/
 outputs/
+tmp/
 
 # Claude Code local settings (auto-generated per user)
 .claude/settings.local.json
@@ -25,3 +26,9 @@ outputs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agentic dev
+
+.claude/skills/cyberian-control/
+AGENTS.md
+.codex/

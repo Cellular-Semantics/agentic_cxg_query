@@ -1,8 +1,30 @@
 # Roadmap
 
-## Concrete Proposals
+## User story
+
+As a biologist/bioinformatician I want to pull relevant data from CELLxGENE census, based on some combination of cell type, tissue, disease and stage
+in order to carry out my analysis. 
+I want to specify what counts as relevant data in free text and have an agent generate code for me to query CELLxGENE or pull data directly for me.
+I have limited prior knowledge of what data is in the Census and how it is annotated, so I want an agent to generate suitable filters with relevant ontology terms and to explore whether the resulting filters return sufficient numbers of cells in order to be useful for me.  If the filter returns no cells, I would like the agent to automatically explore relaxing those filters to find ones that do return cells. Examples could include choosing a broader age/stage filter, a more general tissue, cell type or disease term, or dropping one of the criteria.  This should be an initial exploration rather than an exhustive one.
+
+I would like the agentic session to run quickly and efficiently.
+
+## Multi-framework support
+
+- Setup script should sync skills from claude
+- Add support for copilot 
+	- .vscode config
+	- What else?
+
+## Testing framework:
+
+ - Pass free text query to a set of subagents (3-5?) and assess how well results (accross replicates) suport the use case.
+
+## Future extensions
 
 These are well-understood features with clear implementation paths.
+
+### Support query/filter by assay and suspension type
 
 ### Dataset provenance in query output
 
@@ -17,14 +39,6 @@ Join query results against the census datasets table (`census["census_info"]["da
 ### Assay and donor metadata in default column set
 
 Add `assay`, `suspension_type`, and `donor_id` to the default `column_names` / `obs_column_names` in skill templates. These are commonly needed for downstream QC and batch-effect analysis.
-
-### Mouse organism support improvements
-
-Development stage expansion for mouse (`MmusDv`) is less tested than human. Verify and add test cases for common mouse developmental queries (embryonic day ranges, postnatal stages, adult).
-
-### Skill config sync: Claude <-> Codex
-
-Currently `setup.sh` syncs `.claude/agents/` -> `.codex/agents/`. Consider also syncing relevant parts of skill instructions if Codex gains skill-like support, or maintaining a shared `agents/` directory at project root with build-time copies.
 
 ---
 
