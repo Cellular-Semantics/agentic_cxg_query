@@ -27,6 +27,9 @@ tmp/
 .DS_Store
 Thumbs.db
 
+# Generated lookups
+census_fields.json
+
 # Agentic dev
 
 .claude/skills/cyberian-control/

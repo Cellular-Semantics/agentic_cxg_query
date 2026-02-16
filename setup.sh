@@ -64,6 +64,12 @@ print('  gene_resolver.build_var_value_filter OK')
 "
 ok "All imports verified"
 
+# ---- Refresh census field lookups --------------------------------------------
+
+info "Refreshing census field lookups..."
+.venv/bin/python src/refresh_census_fields.py
+ok "Census field lookups refreshed"
+
 # ---- Check OLS4 MCP ---------------------------------------------------------
 
 info "Checking OLS4 MCP connectivity..."
