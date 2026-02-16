@@ -6,321 +6,121 @@ user-invocable: true
 
 # CELLxGENE Census Query Generator
 
-## Description
-Generate CELLxGENE census queries from natural language descriptions. This skill constructs valid query filters with automatic ontology term expansion and gene name resolution, supporting multiple census API modes (`get_anndata()`, `get_obs()`, `get_highly_variable_genes()`).
-
-## Usage
-```
-/cxg-query [natural language description of desired data]
-```
-
-## Examples
-- `/cxg-query female T cells in lung tissue`
-- `/cxg-query expression of TP53 and BRCA1 in lung fibroblasts`
-- `/cxg-query just metadata for T cells in skin`
-- `/cxg-query highly variable genes in pancreatic beta cells`
-- `/cxg-query medium spiny neurons from adult human brain`
-
----
-
-## Critical Rule: Always Look Up Terms — Never Guess Labels
-
-**You MUST use the OLS4 MCP (via the ontology-term-lookup agent) to resolve every biological entity to its exact ontology label before constructing any filter.** Never guess or assume what a label might be.
-
-`enhance()` matches on **exact `rdfs:label`** values. A wrong label (even a close one) will silently fail to expand — you'll get zero subtypes with no error. For example:
-- `"adult"` — **wrong**, not an rdfs:label in HsapDv → no expansion
-- `"human adult stage"` — **wrong**, not an rdfs:label → no expansion
-- `"adult stage"` — **correct** (HsapDv:0000258) → expands to 103 terms
-
-This applies to **all** categories (cell type, tissue, disease, development stage), not just dev stages. Always look up first, then use the exact label returned by OLS4.
+Generate CELLxGENE census queries from natural language. Constructs valid query filters with automatic ontology term expansion (`enhance()`) and gene name resolution (`resolve_genes()`), supporting `get_obs()`, `get_anndata()`, and `get_highly_variable_genes()`.
 
 ---
 
 ## Instructions
 
-You are helping to construct a CELLxGENE census query from natural language input. Follow these steps in order.
+### Step 1: Parse input
 
-### Step 1: Parse the natural language input
-
-Extract the following from the user's request:
+Extract from the user's request:
 
 - **Sex**: female, male
-- **Cell type**: any cell type (e.g., "T cells", "neurons", "macrophages")
-- **Tissue/Anatomy**: any tissue or anatomical structure (e.g., "lung", "brain", "kidney")
-- **Disease**: any disease or condition (e.g., "diabetes", "cancer")
-- **Development stage**: any developmental stage (e.g., "adult", "embryonic")
-- **Organism**: human or mouse (default to human if not specified)
-- **Genes**: any gene names or Ensembl IDs (e.g., "TP53", "BRCA1", "ENSG00000141510")
-- **Intent keywords**: look for cues about what the user wants:
-  - "metadata", "cell counts", "how many" → `get_obs()` mode
-  - gene names, "expression", "counts matrix" → `get_anndata()` mode
-  - "highly variable", "HVG", "variable genes" → `get_highly_variable_genes()` mode
-  - If unclear, default to `get_anndata()`
+- **Cell type**: e.g. "T cells", "neurons"
+- **Tissue**: e.g. "lung", "brain"
+- **Disease**: e.g. "diabetes", "Crohn's disease"
+- **Development stage**: e.g. "adult", "embryonic"
+- **Organism**: human (default) or mouse
+- **Genes**: gene names or Ensembl IDs
+- **API mode** (infer from intent):
+  | Clues | Mode |
+  |---|---|
+  | "metadata", "cell count", "how many" | `get_obs()` |
+  | gene names, "expression", "matrix" | `get_anndata()` |
+  | "HVG", "highly variable" | `get_highly_variable_genes()` |
+  | unclear | default to `get_anndata()` |
 
-### Step 2: Find ontology terms (MANDATORY — never skip)
+### Step 2: Resolve ontology terms
 
-**You MUST look up every biological entity via OLS4 before building any filter.** Use the ontology-term-lookup agent for each term:
+**Mandatory for**: cell_type, tissue, disease, development_stage. Use the `ontology-term-lookup` subagent (`Task` tool, `subagent_type=ontology-term-lookup`). Launch independent lookups **in parallel**.
 
-- **Cell types**: Search in Cell Ontology (CL)
-- **Tissues**: Search in Uberon (UBERON)
-- **Diseases**: Search in MONDO
-- **Development stages**: Search in HsapDv (human) or MmusDv (mouse)
+**Skip lookup for**: `sex` (only `'male'`/`'female'`) and `is_primary_data` — these are fixed values, not ontology terms.
 
-Use the **exact label** returned by OLS4 in your filter. Do not paraphrase, abbreviate, or add prefixes like "human". The label from OLS4 is what `enhance()` will match against in Ubergraph.
+Ontology targets: CL (cell types), UBERON (tissues), MONDO (diseases), HsapDv (human dev stages), MmusDv (mouse dev stages).
 
-If the first search doesn't yield good results, try multiple phrasings:
-- "T cell" vs "T lymphocyte"
-- "lung" vs "pulmonary"
-- "kidney" vs "renal"
-- "adult" → search HsapDv, use the exact label returned (e.g. `"adult stage"`)
+Use the **exact label** returned by the subagent. Never paraphrase or add prefixes. `enhance()` matches on exact `rdfs:label` — a wrong label silently fails (zero subtypes, no error).
 
-Use the Task tool with subagent_type=ontology-term-lookup for each term lookup.
+**Critical example** — development stages:
+- `"adult"` — wrong (not an rdfs:label) → no expansion
+- `"human adult stage"` — wrong → no expansion
+- `"adult stage"` — correct (HsapDv:0000258) → 103 terms
 
-### Step 3: Resolve gene names (if any)
+If the subagent returns a deprecated term, use the non-deprecated alternative it provides.
 
-If the user mentioned any gene names or Ensembl IDs, resolve them using the gene resolver:
+### Step 3: Resolve genes (if any)
 
 ```python
 from gene_resolver import resolve_genes, build_var_value_filter
 
 matches = resolve_genes(["TP53", "BRCA1"], organism="homo_sapiens")
-```
-
-For each result, check:
-- **`is_ambiguous`**: If True, inform the user which Ensembl IDs matched and their `feature_types`. Ask which they want, or note that `protein_coding` was auto-selected if `prefer_protein_coding=True` resolved it.
-- **Empty `ensembl_ids`**: Gene not found — inform the user and suggest checking the spelling.
-
-Then build the var filter from all resolved Ensembl IDs:
-```python
 all_ids = [eid for m in matches for eid in m.ensembl_ids]
 var_filter = build_var_value_filter(all_ids)
 ```
 
-### Step 4: Construct the obs_value_filter
+Check `is_ambiguous` (inform user) and empty `ensembl_ids` (gene not found).
 
-Build a Python expression string using these rules:
+### Step 4: Construct obs_value_filter
 
-**De-duplication (always applied)**: Always include `is_primary_data == True` in the filter to avoid counting cells that appear in multiple overlapping datasets. **You MUST inform the user** that this filter is being applied, e.g.:
+**Always include** `is_primary_data == True` (tell the user). Omit only if user explicitly requests duplicates.
 
-> Note: Filtering to `is_primary_data == True` to exclude duplicate cells across overlapping datasets.
+Valid columns: `sex`, `cell_type`, `tissue`, `tissue_general`, `disease`, `development_stage` (and their `_ontology_term_id` variants).
 
-If the user explicitly requests all data including duplicates, omit this filter and note that results may contain duplicate cells.
+Syntax: `==` for single values, `in [...]` for multiple, `and` to combine, single quotes for strings. Prefer labels over IDs.
 
-**Valid column names** (CELLxGENE census schema):
-- `is_primary_data`: `True` or `False` (always default to `True`)
-- `sex`: `'male'` or `'female'` (lowercase)
-- `cell_type`: ontology label (e.g., `'T cell'`)
-- `cell_type_ontology_term_id`: ontology ID (e.g., `'CL:0000084'`)
-- `tissue` / `tissue_ontology_term_id`: tissue terms
-- `tissue_general` / `tissue_general_ontology_term_id`: broader tissue category
-- `disease` / `disease_ontology_term_id`: disease terms
-- `development_stage` / `development_stage_ontology_term_id`: dev stage terms
+### Step 5: Validate cell count (zero-results fallback — MANDATORY)
 
-**Syntax rules**:
-- Use `==` for single values: `sex == 'female'`
-- Use `in [...]` for multiple values: `cell_type in ['T cell', 'B cell']`
-- Use `and` to combine conditions
-- Always use single quotes for string values
-- Prefer labels over IDs (the enhancer will expand them)
-
-### Step 5: Determine output mode
-
-Ask the user (or infer from context when obvious):
-
-1. **API mode** — which census function to use:
-   | Keyword clues | API mode | When to use |
-   |---|---|---|
-   | "metadata", "cell count", "how many" | `get_obs()` | Exploring metadata, counting cells |
-   | gene names, "expression", "matrix" | `get_anndata()` | Retrieving expression data |
-   | "HVG", "highly variable", "variable genes" | `get_highly_variable_genes()` | Feature selection |
-
-2. **Execution mode** — generate code vs execute directly:
-   - If the user says "run it", "execute", "fetch" → execute directly (with pre-flight size estimate for `get_anndata()`)
-   - If the user says "show code", "generate" → generate code only
-   - If ambiguous, default to generating code
-   - When executing directly, always auto-save results to `outputs/` directory
-
-**Size warning**: For broad `get_anndata()` queries (no gene filter, broad cell type), warn the user that this may download a very large dataset. Suggest running `get_obs()` first to estimate cell count.
-
-### Step 6: Present the result
-
-Use the appropriate template based on the chosen API mode.
-
----
-
-#### Template A: `get_obs()` (metadata only)
+**You MUST run a pre-flight cell count** before presenting the final query. Execute this via the Bash tool with Python:
 
 ```python
-import cellxgene_census
 from cxg_query_enhancer import enhance
+import cellxgene_census
 
-obs_filter = enhance(
-    "is_primary_data == True and [obs_value_filter]",
-    organism="[homo_sapiens or mus_musculus]"
-)
-
+obs_filter = enhance("is_primary_data == True and ...", organism="homo_sapiens")
 with cellxgene_census.open_soma(census_version="latest") as census:
-    obs_df = cellxgene_census.get_obs(
-        census,
-        organism="[Homo sapiens or Mus musculus]",
+    obs_df = cellxgene_census.get_obs(census, organism="Homo sapiens",
         value_filter=obs_filter,
-        column_names=[
-            "cell_type", "tissue", "disease",
-            "development_stage", "sex", "dataset_id"
-        ]
-    )
-
-print(f"Found {len(obs_df):,} cells")
-print(obs_df.head())
+        column_names=["cell_type", "tissue", "disease"])
+print(f"{len(obs_df):,} cells")
+for col in ["cell_type", "tissue", "disease"]:
+    if col in obs_df.columns:
+        counts = obs_df[col].value_counts()
+        counts = counts[counts > 0]  # drop zero-count categories
+        print(f"\n{col} ({len(counts)} unique):")
+        print(counts.to_string())
 ```
 
-**Note**: `get_obs()` uses the parameter name `value_filter=` (not `obs_value_filter`).
+**Categorical dtype warning**: Census returns `category`-typed columns containing all possible values across the entire census (~400+ tissues, ~600+ cell types). `value_counts()` and `groupby()` will include hundreds of zero-count entries by default. **Always filter**: `counts = counts[counts > 0]`, or use `groupby(..., observed=True)`.
 
----
+**If zero cells are returned, you MUST execute the relaxation loop** — do not just suggest relaxations. Actually run each variant and report the counts:
 
-#### Template B: `get_anndata()` (expression data)
+1. Broaden disease (use parent term) → **run count** → report result
+2. Broaden cell type (use parent term) → **run count** → report result
+3. Broaden tissue (use parent term) → **run count** → report result
+4. Broaden development_stage (use parent term) → **run count** → report result
 
-```python
-import cellxgene_census
-from cxg_query_enhancer import enhance
+Stop relaxing once you find a combination with >0 cells. Present the user with a table of what worked and the cell counts, then let them choose which relaxed filter to use.
 
-obs_filter = enhance(
-    "is_primary_data == True and [obs_value_filter]",
-    organism="[homo_sapiens or mus_musculus]"
-)
+### Step 6: Generate output
 
-with cellxgene_census.open_soma(census_version="latest") as census:
-    adata = cellxgene_census.get_anndata(
-        census,
-        organism="[Homo sapiens or Mus musculus]",
-        obs_value_filter=obs_filter,
-        var_value_filter="[var_value_filter or omit if no genes]",
-        obs_column_names=[
-            "cell_type", "tissue", "disease",
-            "development_stage", "sex"
-        ]
-    )
+- Default to **generating code** unless user says "run it"/"execute"/"fetch".
+- Use the appropriate template from `references/templates.md`.
+- For direct execution: do pre-flight size estimate (for `get_anndata()`), execute, show preview, auto-save to `outputs/`.
+- **Always filter zero-count categories** in any breakdown or summary (see Step 5 warning).
+- **Size warning**: If broad `get_anndata()` with no gene filter, warn the user. Suggest `get_obs()` first.
 
-print(f"Retrieved {adata.shape[0]:,} cells x {adata.shape[1]:,} genes")
-print(adata.obs.head())
+Always list resolved terms in output:
 ```
-
-If no genes were specified, omit the `var_value_filter` parameter entirely.
-
----
-
-#### Template C: `get_highly_variable_genes()` (HVG)
-
-```python
-import cellxgene_census
-from cxg_query_enhancer import enhance
-
-obs_filter = enhance(
-    "is_primary_data == True and [obs_value_filter]",
-    organism="[homo_sapiens or mus_musculus]"
-)
-
-with cellxgene_census.open_soma(census_version="latest") as census:
-    hvg_df = cellxgene_census.get_highly_variable_genes(
-        census,
-        organism="[Homo sapiens or Mus musculus]",
-        obs_value_filter=obs_filter,
-        n_top_genes=2000
-    )
-
-print(f"Found {len(hvg_df)} highly variable genes")
-print(hvg_df.head(20))
+Resolved terms:
+- Cell type: T cell (CL:0000084)
+- Tissue: lung (UBERON:0002048)
 ```
 
 ---
 
-#### Direct execution template
+## Important Notes
 
-When the user wants you to run the query directly:
-
-1. **Pre-flight size estimate** (for `get_anndata()` only): Before fetching expression data, always run a quick `get_obs()` count first to estimate download size. Use this pattern:
-
-```python
-import cellxgene_census
-from cxg_query_enhancer import enhance
-
-obs_filter = enhance("is_primary_data == True and [obs_value_filter]", organism="[homo_sapiens or mus_musculus]")
-
-with cellxgene_census.open_soma(census_version="latest") as census:
-    obs_df = cellxgene_census.get_obs(
-        census,
-        organism="[Homo sapiens or Mus musculus]",
-        value_filter=obs_filter,
-        column_names=["cell_type"]
-    )
-
-n_cells = len(obs_df)
-n_genes_total = 60664  # approx total genes in census (human)
-n_genes_filtered = [number of genes in var_value_filter, or n_genes_total if none]
-
-est_mb = (n_cells * n_genes_filtered * 4) / (1024 ** 2)  # dense upper bound
-# sparse data is typically 10-30% of dense; use 0.2 as multiplier
-est_sparse_mb = est_mb * 0.2
-
-print(f"Estimated: {n_cells:,} cells x {n_genes_filtered:,} genes")
-print(f"Estimated download size: ~{est_sparse_mb:,.0f} MB (sparse), up to ~{est_mb:,.0f} MB (dense)")
-```
-
-Report the estimate to the user. If estimated sparse size > 500 MB, warn them and ask for confirmation before proceeding. If > 5 GB, strongly recommend adding gene filters or narrowing the query.
-
-2. Execute the full query using the Bash tool with Python
-3. Show the shape and `.head()` preview
-4. **Auto-save results** to `outputs/` with a descriptive filename:
-
-```python
-import os
-from datetime import datetime
-
-os.makedirs("outputs", exist_ok=True)
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-# Build a short slug from the query filters (e.g. "female_Tcell_lung")
-filename = f"outputs/{slug}_{timestamp}.h5ad"  # .h5ad for anndata, .parquet for obs/hvg
-adata.write_h5ad(filename)  # or obs_df.to_parquet(filename) for get_obs/HVG
-print(f"Saved to {filename}")
-```
-
-Filename conventions:
-- `get_anndata()` results → `.h5ad` format
-- `get_obs()` results → `.parquet` format
-- `get_highly_variable_genes()` results → `.parquet` format
-- Slug should be a short, readable summary of the key filters (e.g. `female_Tcell_lung`, `TP53_BRCA1_fibroblast`), max ~40 chars
-
----
-
-### Important Notes
-
-1. **Organism parameter**: Always include the organism parameter when using `enhance()`, especially for development_stage queries
-2. **Term not found**: If an ontology term cannot be found, suggest alternative phrasings or inform the user
-3. **Multiple values**: If the user specifies multiple values for a category (e.g., "T cells and B cells"), use the `in [...]` syntax
-4. **Enhancement**: The `enhance()` function will automatically:
-   - Expand "T cell" to include all T cell subtypes (CD4+, CD8+, regulatory T cells, etc.)
-   - Expand "lung" to include all lung parts (left lung, right lung, bronchus, etc.)
-   - Expand diseases to include all subtypes
-   - Filter results to only include terms present in CELLxGENE Census
-5. **Gene resolution**: The `resolve_genes()` function handles:
-   - Case-insensitive gene name lookup
-   - Ensembl ID passthrough
-   - Disambiguation of ambiguous names (preferring protein_coding)
-   - 325 gene names in census are ambiguous across biotypes; the resolver handles this automatically
-
-### Error Handling
-
-- **Ambiguous ontology terms**: Ask the user to clarify (e.g., "Did you mean 'neuron' or 'neural cell'?")
-- **Ambiguous gene names**: Report which Ensembl IDs matched and their biotypes; ask user to pick or accept the protein_coding default
-- **Gene not found**: Suggest checking spelling or trying an alias
-- **Term not found**: Suggest checking the ontology or using a different term
-- **Invalid syntax**: Explain the correct syntax and provide examples
-
-### Ontology Terms Found (include in output)
-
-Always list the resolved terms:
-- Cell type: [term label] ([term ID])
-- Tissue: [term label] ([term ID])
-- Disease: [term label] ([term ID])
-- Development stage: [term label] ([term ID])
-- Genes: [gene symbol] → [Ensembl ID] ([feature_type])
+- **Organism parameter**: Always include in `enhance()`, especially for dev stages.
+- **`get_obs()` uses `value_filter=`**, not `obs_value_filter=`. The other two use `obs_value_filter=`.
+- **Enhancement**: `enhance()` expands terms to all subtypes + related terms, filtered to those present in CELLxGENE Census.
+- **Ambiguous terms**: Ask user to clarify. For genes, report matching Ensembl IDs and biotypes.
