@@ -66,7 +66,7 @@ Check `is_ambiguous` (inform user) and empty `ensembl_ids` (gene not found).
 
 Valid columns: `sex`, `cell_type`, `tissue`, `tissue_general`, `disease`, `development_stage` (and their `_ontology_term_id` variants).
 
-Syntax: `==` for single values, `in [...]` for multiple, `and` to combine, single quotes for strings. Prefer labels over IDs.
+Syntax: `==` for single values, `in [...]` for multiple, `and`/`or` to combine, single quotes for strings. Prefer labels over IDs. Use parentheses around `or` groups. See `references/grammar.md` for the full formal grammar, column reference, and anti-patterns.
 
 ### Step 5: Validate cell count (zero-results fallback — MANDATORY)
 
