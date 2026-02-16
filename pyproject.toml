@@ -1,5 +1,5 @@
 [project]
-name = "agentic-cxg-query"
+name = "ask-census"
 version = "0.1.0"
 description = "Agentic wrapper for CELLxGENE census query generation with ontology-aware term expansion"
 readme = "README.md"

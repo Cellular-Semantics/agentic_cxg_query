@@ -1,12 +1,12 @@
-# Agentic CxG Query
+# ask-census
 
 Natural-language queries for [CELLxGENE Census](https://chanzuckerberg.github.io/cellxgene-census/), powered by AI coding agents and ontology-aware term expansion.
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/Cellular-Semantics/agentic-cxg-query.git
-cd agentic-cxg-query
+git clone https://github.com/Cellular-Semantics/ask-census.git
+cd ask-census
 ./setup.sh          # creates .venv, installs deps, syncs configs, verifies OLS4
 ```
 
@@ -83,7 +83,7 @@ Step-by-step walkthroughs of the full agentic flow:
 ## Project Structure
 
 ```
-agentic-cxg-query/
+ask-census/
 ├── .claude/                    # Claude Code config (master for shared files)
 │   ├── agents/ontology-term-lookup.md  # Ontology lookup agent (OLS4 MCP)
 │   └── skills/cxg-query/

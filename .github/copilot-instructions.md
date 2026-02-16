@@ -1,4 +1,4 @@
-# Copilot Instructions — Agentic CxG Query
+# Copilot Instructions — ask-census
 
 ## What this project does
 
