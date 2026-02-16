@@ -19,7 +19,7 @@ literal      = SINGLE_QUOTED_STRING | BOOLEAN
 ontology_col      = "cell_type" | "tissue" | "tissue_general"
                   | "disease" | "development_stage"
 id_col            = ontology_col "_ontology_term_id"
-passthrough_col   = "sex" | "is_primary_data"
+passthrough_col   = "sex" | "is_primary_data" | "assay" | "suspension_type" | "tissue_type"
 ```
 
 ---
@@ -47,6 +47,32 @@ ID columns expand via direct IRI → subclass/part_of closure.
 |---|---|
 | `sex` | `'male'`, `'female'` |
 | `is_primary_data` | `True`, `False` (Python booleans, not strings) |
+
+### Agent-expanded columns (agent uses latent knowledge + `census_fields.json`)
+
+Not ontology-expanded by `enhance()`. The agent reads `references/census_fields.json` to find exact census labels and constructs `assay in [...]` filters directly.
+
+| Column | ID variant | Source | Valid values |
+|---|---|---|---|
+| `assay` | `assay_ontology_term_id` | EFO (lookup only) | See `census_fields.json` — ~37 assays |
+
+**Assay synonym guidance** — map informal user terms to exact census labels from the lookup:
+
+| User says | Map to census labels |
+|---|---|
+| "10x" / "chromium" | All `10x *` variants from lookup |
+| "Smart-seq" | `Smart-seq`, `Smart-seq2`, `Smart-seq v4`, `Smart-seq3` |
+| "droplet" / "droplet-based" | 10x variants + `Drop-seq` + `inDrop` + `microwell-seq` + ... |
+| "plate-based" / "full-length" | Smart-seq family + CEL-seq family |
+| "snRNA-seq" / "single-nucleus" | Combine with `suspension_type == 'nucleus'` instead |
+| "scRNA-seq" / "single-cell" | Combine with `suspension_type == 'cell'` instead |
+
+### Controlled vocabulary columns (fixed values, no lookup needed)
+
+| Column | Valid values |
+|---|---|
+| `suspension_type` | `'cell'`, `'nucleus'`, `'na'` |
+| `tissue_type` | `'tissue'`, `'organoid'`, `'cell culture'` |
 
 ---
 

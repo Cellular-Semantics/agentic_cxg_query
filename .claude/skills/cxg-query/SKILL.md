@@ -21,6 +21,9 @@ Extract from the user's request:
 - **Tissue**: e.g. "lung", "brain"
 - **Disease**: e.g. "diabetes", "Crohn's disease"
 - **Development stage**: e.g. "adult", "embryonic"
+- **Assay**: e.g. "10x", "Smart-seq", "droplet-based"
+- **Suspension type**: cell, nucleus (snRNA vs scRNA)
+- **Tissue type**: tissue, organoid, cell culture
 - **Organism**: human (default) or mouse
 - **Genes**: gene names or Ensembl IDs
 - **API mode** (infer from intent):
@@ -64,7 +67,11 @@ Check `is_ambiguous` (inform user) and empty `ensembl_ids` (gene not found).
 
 **Always include** `is_primary_data == True` (tell the user). Omit only if user explicitly requests duplicates.
 
-Valid columns: `sex`, `cell_type`, `tissue`, `tissue_general`, `disease`, `development_stage` (and their `_ontology_term_id` variants).
+Valid columns: `sex`, `cell_type`, `tissue`, `tissue_general`, `disease`, `development_stage` (and their `_ontology_term_id` variants), `assay`, `suspension_type`, `tissue_type`.
+
+For `assay`, read `references/census_fields.json` to find exact census labels. Use latent knowledge to map informal terms (e.g. "10x" → all `10x *` variants, "Smart-seq" → Smart-seq family) to the exact labels from the lookup. Construct `assay in [...]` with matched labels. See `references/grammar.md` for the full synonym mapping table.
+
+For `suspension_type` and `tissue_type`, use fixed values directly — no lookup needed. See `references/grammar.md` for valid values.
 
 Syntax: `==` for single values, `in [...]` for multiple, `and`/`or` to combine, single quotes for strings. Prefer labels over IDs. Use parentheses around `or` groups. See `references/grammar.md` for the full formal grammar, column reference, and anti-patterns.
 
