@@ -24,6 +24,10 @@ I would like the agentic session to run quickly and efficiently.
 
 These are well-understood features with clear implementation paths.
 
+### Support non-model organisms (marmoset, macaque, chimpanzee)
+
+Census includes 3 additional species beyond human/mouse: *Callithrix jacchus* (1.7M cells), *Macaca mulatta* (2.9M cells), and *Pan troglodytes* (158K cells). These use generic UBERON life-stage terms (`prime adult stage`, `juvenile stage`, etc.) rather than species-specific ontologies (HsapDv/MmusDv). Requires updating `cxg_query_enhancer` to handle UBERON-based dev stages and routing to the correct organism collection.
+
 ### Support query/filter by assay and suspension type
 
 ### Dataset provenance in query output
