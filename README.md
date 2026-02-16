@@ -70,35 +70,6 @@ Step-by-step walkthroughs of the full agentic flow:
 - **[Gene expression in fibroblasts](examples/02_gene_expression_in_fibroblasts.md)** — gene resolution, var filtering, ambiguity handling
 - **[Disease + development stage](examples/03_disease_and_development_stage.md)** — multi-ontology, dev stage strategies, informal age terms
 
-## Direct Python Usage
-
-```python
-import cellxgene_census
-from cxg_query_enhancer import enhance
-from gene_resolver import resolve_genes, build_var_value_filter
-
-# Build and expand the obs filter
-obs_filter = enhance(
-    "cell_type in ['T cell'] and tissue in ['lung']",
-    organism="homo_sapiens"
-)
-
-# Resolve genes to Ensembl IDs
-matches = resolve_genes(["TP53", "BRCA1"], organism="homo_sapiens")
-var_filter = build_var_value_filter(
-    [eid for m in matches for eid in m.ensembl_ids]
-)
-
-# Fetch from census
-with cellxgene_census.open_soma(census_version="latest") as census:
-    adata = cellxgene_census.get_anndata(
-        census,
-        organism="Homo sapiens",
-        obs_value_filter=obs_filter,
-        var_value_filter=var_filter,
-    )
-print(f"{adata.shape[0]:,} cells x {adata.shape[1]:,} genes")
-```
 
 ## Project Structure
 
