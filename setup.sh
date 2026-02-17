@@ -2,6 +2,7 @@
 set -euo pipefail
 
 MIN_PYTHON="3.10"
+MAX_PYTHON="3.13"
 
 # ---- Helpers ----------------------------------------------------------------
 
@@ -13,13 +14,23 @@ fail()  { printf '\033[1;31m[FAIL]\033[0m  %s\n' "$*"; exit 1; }
 # ---- Check Python -----------------------------------------------------------
 
 PYTHON=""
-for candidate in python3 python; do
+for candidate in python3.12 python3.11 python3.10 python3 python; do
     if command -v "$candidate" &>/dev/null; then
-        PYTHON="$candidate"
-        break
+        if "$candidate" -c "
+import sys
+min_parts = [int(x) for x in '$MIN_PYTHON'.split('.')]
+max_parts = [int(x) for x in '$MAX_PYTHON'.split('.')]
+cur = (sys.version_info.major, sys.version_info.minor)
+if tuple(min_parts) <= cur < tuple(max_parts):
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+            PYTHON="$candidate"
+            break
+        fi
     fi
 done
-[ -n "$PYTHON" ] || fail "Python not found. Install Python >=$MIN_PYTHON."
+[ -n "$PYTHON" ] || fail "No compatible Python found. Install Python >=$MIN_PYTHON and <$MAX_PYTHON (for example, python3.10, python3.11, or python3.12)."
 
 PY_VERSION=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 info "Found $PYTHON $PY_VERSION"
@@ -27,12 +38,14 @@ info "Found $PYTHON $PY_VERSION"
 if "$PYTHON" -c "
 import sys
 min_parts = [int(x) for x in '$MIN_PYTHON'.split('.')]
-if (sys.version_info.major, sys.version_info.minor) < tuple(min_parts):
+max_parts = [int(x) for x in '$MAX_PYTHON'.split('.')]
+cur = (sys.version_info.major, sys.version_info.minor)
+if not (tuple(min_parts) <= cur < tuple(max_parts)):
     sys.exit(1)
 " 2>/dev/null; then
-    ok "Python version OK (>=$MIN_PYTHON)"
+    ok "Python version OK (>=$MIN_PYTHON, <$MAX_PYTHON)"
 else
-    fail "Python >=$MIN_PYTHON required, found $PY_VERSION"
+    fail "Python >=$MIN_PYTHON and <$MAX_PYTHON required, found $PY_VERSION"
 fi
 
 # ---- Create venv ------------------------------------------------------------
