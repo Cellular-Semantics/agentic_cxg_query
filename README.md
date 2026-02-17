@@ -4,11 +4,25 @@ Natural-language queries for [CELLxGENE Census](https://chanzuckerberg.github.io
 
 ## Quick Start
 
+### macOS/Linux Setup (Bash)
+
 ```bash
 git clone https://github.com/Cellular-Semantics/ask-census.git
 cd ask-census
 ./setup.sh          # creates .venv, installs deps, syncs configs, verifies OLS4
 ```
+
+### Windows Setup (PowerShell)
+
+```powershell
+git clone https://github.com/Cellular-Semantics/ask-census.git
+cd ask-census
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+Activation is optional for agent-driven workflows. Use `.\.venv\Scripts\Activate.ps1` only if you want an interactive shell with the virtual environment activated.
+
+### Query with Your Agent
 
 Then open the project in your AI coding agent and ask for what you need:
 
@@ -98,6 +112,7 @@ ask-census/
 ├── planning/                   # Roadmap
 ├── outputs/                    # Query results (git-ignored)
 ├── setup.sh                    # One-command setup
+├── setup.ps1                   # Windows PowerShell setup
 ├── Makefile                    # setup, test, check-mcp, clean
 └── pyproject.toml
 ```
