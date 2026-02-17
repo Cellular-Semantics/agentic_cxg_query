@@ -25,4 +25,4 @@ jobs:
       - name: Run Windows setup script
         shell: pwsh
         run: |
-          powershell -ExecutionPolicy Bypass -File .\setup.ps1
+          .\setup.ps1

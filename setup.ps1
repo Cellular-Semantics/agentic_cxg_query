@@ -1,5 +1,8 @@
 #!/usr/bin/env pwsh
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $true
+}
 
 $MinPython = '3.10'
 $MaxPython = '3.13'
@@ -52,7 +55,7 @@ function Sync-FileIfDifferent {
     }
 
     $destParent = Split-Path -Parent $Destination
-    if (-not (Test-Path $destParent)) {
+    if (-not [string]::IsNullOrWhiteSpace($destParent) -and -not (Test-Path $destParent)) {
         New-Item -ItemType Directory -Path $destParent -Force | Out-Null
     }
 
@@ -87,14 +90,14 @@ function Sync-MirrorDirectory {
 # ---- Check Python -----------------------------------------------------------
 
 $candidates = @(
-    @{ Command = 'py'; Args = @('-3.12') },
-    @{ Command = 'py'; Args = @('-3.11') },
-    @{ Command = 'py'; Args = @('-3.10') },
+    @{ Command = 'python'; Args = @() },
+    @{ Command = 'python3'; Args = @() },
     @{ Command = 'python3.12'; Args = @() },
     @{ Command = 'python3.11'; Args = @() },
     @{ Command = 'python3.10'; Args = @() },
-    @{ Command = 'python'; Args = @() },
-    @{ Command = 'python3'; Args = @() }
+    @{ Command = 'py'; Args = @('-3.10') },
+    @{ Command = 'py'; Args = @('-3.11') },
+    @{ Command = 'py'; Args = @('-3.12') }
 )
 
 $PythonCommand = $null
@@ -131,6 +134,9 @@ Ok "Python version OK (>=$MinPython, <$MaxPython)"
 if (-not (Test-Path '.venv')) {
     Info 'Creating virtual environment...'
     & $PythonCommand @PythonArgs -m venv .venv
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Failed to create virtual environment (exit code $LASTEXITCODE)"
+    }
     Ok 'Virtual environment created'
 } else {
     Info 'Virtual environment already exists'
@@ -145,7 +151,13 @@ if (-not (Test-Path $VenvPython)) {
 
 Info 'Installing dependencies (editable)...'
 & $VenvPython -m pip install --upgrade pip -q
+if ($LASTEXITCODE -ne 0) {
+    Fail "Failed to upgrade pip (exit code $LASTEXITCODE)"
+}
 & $VenvPython -m pip install -e '.[dev]' -q
+if ($LASTEXITCODE -ne 0) {
+    Fail "Failed to install project dependencies (exit code $LASTEXITCODE)"
+}
 Ok 'Dependencies installed'
 
 # ---- Verify imports ---------------------------------------------------------
@@ -158,12 +170,18 @@ print('  cxg_query_enhancer.enhance ......... OK')
 print('  gene_resolver.resolve_genes ........ OK')
 print('  gene_resolver.build_var_value_filter OK')
 "@
+if ($LASTEXITCODE -ne 0) {
+    Fail "Import verification failed (exit code $LASTEXITCODE)"
+}
 Ok 'All imports verified'
 
 # ---- Refresh census field lookups ------------------------------------------
 
 Info 'Refreshing census field lookups...'
 & $VenvPython 'src/refresh_census_fields.py'
+if ($LASTEXITCODE -ne 0) {
+    Fail "Failed to refresh census field lookups (exit code $LASTEXITCODE)"
+}
 Ok 'Census field lookups refreshed'
 
 # ---- Check OLS4 MCP ---------------------------------------------------------
